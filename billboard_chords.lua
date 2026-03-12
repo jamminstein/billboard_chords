@@ -962,5 +962,12 @@ function init()
 end
 
 function cleanup()
-  note_off_all()
+  clock.cancel_all()
+  if g then g:all(0); g:refresh() end
+  if m then
+    for ch = 1, 16 do
+      m:cc(123, 0, ch)
+      m:cc(120, 0, ch)
+    end
+  end
 end
