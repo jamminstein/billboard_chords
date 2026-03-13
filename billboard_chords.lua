@@ -22,6 +22,7 @@
 -- NEW FEATURES:
 -- - Decade filtering: K1 toggles mode, filters songs by year
 -- - Similar progressions: K2+E3 finds songs with ≥2 common chords
+-- - Screen redesign: beat_phase, popup system, brightness hierarchy
 
 engine.name = "MollyThePoly"
 
@@ -115,6 +116,12 @@ local state = {
   -- similar songs search results
   search_results = {},
   showing_search = false,
+  
+  -- NEW: Screen state vars
+  beat_phase = 0,      -- 0-3 for beat tracking
+  popup_param = nil,   -- popup category
+  popup_val = nil,     -- popup value
+  popup_time = 0,      -- popup display timer
 }
 
 -- ============================================================
@@ -336,63 +343,143 @@ end
 -- ============================================================
 function redraw()
   screen.clear()
+  screen.aa(1)
   
   if state.showing_search then
-    -- Search results screen
+    -- ── STATUS STRIP ──────────────────────────────────
+    screen.level(4)
+    screen.rect(0, 0, 128, 11)
+    screen.fill()
+    
     screen.level(15)
-    screen.move(0, 10)
+    screen.font_face(7)
+    screen.font_size(8)
+    screen.move(2, 8)
+    screen.text("BILLBOARD")
+    
+    -- beat pulse dot
+    local beat_flash = (state.beat_phase % 4) < 2 and 12 or 4
+    screen.level(beat_flash)
+    screen.circle(120, 5, 2)
+    screen.fill()
+    
+    -- ── LIVE ZONE: Search Results ─────────────────────
+    screen.level(15)
+    screen.move(0, 24)
     screen.text("SIMILAR PROGRESSIONS")
     
-    screen.level(8)
-    screen.move(0, 24)
+    screen.level(10)
+    screen.move(0, 34)
     screen.text("Matches with: " .. state.filtered_songs[state.song_idx].title)
     
-    screen.level(5)
-    local y = 38
-    for i = 1, math.min(4, #state.search_results) do
+    screen.level(6)
+    local y = 45
+    for i = 1, math.min(3, #state.search_results) do
       screen.move(0, y)
       screen.text(state.search_results[i].song.title .. " (" .. state.search_results[i].matches .. ")")
-      y = y + 10
+      y = y + 7
     end
     
     if #state.search_results == 0 then
       screen.level(4)
-      screen.move(0, 38)
+      screen.move(0, 45)
       screen.text("No similar progressions found")
     end
     
   else
-    -- Normal view
+    -- ── STATUS STRIP ──────────────────────────────────
+    screen.level(4)
+    screen.rect(0, 0, 128, 11)
+    screen.fill()
+    
     screen.level(15)
-    screen.move(0, 10)
-    screen.text("BILLBOARD CHORDS")
+    screen.font_face(7)
+    screen.font_size(8)
+    screen.move(2, 8)
+    screen.text("BILLBOARD")
     
-    screen.level(10)
-    screen.move(0, 24)
-    screen.text("Decade Filter: " .. state.current_decade)
+    -- decade at level 6
+    screen.level(6)
+    screen.move(80, 8)
+    screen.text(state.current_decade)
     
+    -- beat pulse dot
+    local beat_flash = (state.beat_phase % 4) < 2 and 12 or 4
+    screen.level(beat_flash)
+    screen.circle(120, 5, 2)
+    screen.fill()
+    
+    -- ── LIVE ZONE ─────────────────────────────────────
     if #state.filtered_songs > 0 then
       local song = state.filtered_songs[state.song_idx]
-      screen.level(12)
-      screen.move(0, 38)
-      screen.text(song.year .. " - " .. song.title)
       
-      screen.level(8)
-      screen.move(0, 50)
+      -- song browser: current at level 15, above/below 4-6
+      screen.level(15)
+      screen.font_face(7)
+      screen.font_size(8)
+      screen.move(0, 25)
+      screen.text(song.title)
+      
+      -- songs above/below at dim levels
+      if state.song_idx > 1 then
+        screen.level(6)
+        screen.move(0, 16)
+        screen.text(state.filtered_songs[state.song_idx - 1].title)
+      end
+      if state.song_idx < #state.filtered_songs then
+        screen.level(6)
+        screen.move(0, 34)
+        screen.text(state.filtered_songs[state.song_idx + 1].title)
+      end
+      
+      -- chord progression at level 10-12
+      screen.level(12)
+      screen.font_face(1)
+      screen.font_size(5)
+      screen.move(0, 45)
       local chord_str = table.concat(song.chords, " ")
       if #chord_str > 40 then
         chord_str = chord_str:sub(1, 40) .. ".."
       end
       screen.text(chord_str)
       
-      screen.level(5)
-      screen.move(0, 62)
-      screen.text("Octave: " .. state.octave .. "  K2=Similar")
+      -- similar count at level 4
+      screen.level(4)
+      screen.move(0, 55)
+      screen.text(song.year .. " - " .. song.artist)
+      
     else
       screen.level(4)
-      screen.move(0, 38)
+      screen.move(0, 25)
       screen.text("No songs in decade")
     end
+    
+    -- ── CONTEXT BAR ───────────────────────────────────
+    screen.level(5)
+    screen.font_face(1)
+    screen.font_size(5)
+    screen.move(0, 62)
+    screen.text("E1:decade  E2:song  E3:octave  K2=similar")
+  end
+  
+  -- Popup system
+  if state.popup_param and state.popup_time > 0 then
+    screen.level(15)
+    screen.rect(20, 35, 90, 25)
+    screen.fill()
+    
+    screen.level(0)
+    screen.font_face(7)
+    screen.font_size(8)
+    screen.move(25, 45)
+    screen.text(state.popup_param)
+    
+    screen.font_face(1)
+    screen.font_size(6)
+    screen.move(25, 55)
+    screen.text(tostring(state.popup_val))
+    
+    state.popup_time = state.popup_time - 1
   end
   
   screen.update()
@@ -407,15 +494,24 @@ function enc(n, d)
     state.current_decade_idx = new_idx
     set_decade(DECADE_LIST[new_idx])
     state.showing_search = false
+    state.popup_param = "DECADE"
+    state.popup_val = state.current_decade
+    state.popup_time = 20
     
   elseif n == 2 then
     if #state.filtered_songs > 0 then
       state.song_idx = ((state.song_idx - 1 + d) % #state.filtered_songs) + 1
       state.showing_search = false
+      state.popup_param = "SONG"
+      state.popup_val = state.song_idx
+      state.popup_time = 20
     end
     
   elseif n == 3 then
     state.octave = math.max(3, math.min(6, state.octave + d))
+    state.popup_param = "OCT"
+    state.popup_val = state.octave
+    state.popup_time = 20
   end
   
   grid_redraw()
@@ -439,13 +535,28 @@ function key(n, z)
   end
 end
 
-g = grid.connect()
-g.key = on_grid_key
+-- ============================================================
+--  INIT / CLEANUP
+-- ============================================================
 
 function init()
   midi_out = midi.connect(1)
   
+  g = grid.connect()
+  g.key = on_grid_key
+  
   rebuild_filtered_songs()
+  
+  -- Screen update loop for beat_phase
+  clock.run(function()
+    while true do
+      state.beat_phase = (state.beat_phase + 1) % 4
+      redraw()
+      grid_redraw()
+      clock.sleep(1/10)  -- ~10fps
+    end
+  end)
+  
   redraw()
   grid_redraw()
 end
