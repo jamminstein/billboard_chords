@@ -1,45 +1,27 @@
 # billboard_chords
 
-Billboard Hot 100 Chord Explorer for norns + grid. Browse chart hits by year and week, play chord progressions on grid. Offline hardcoded database.
-
-## Description
-
-Billboard Chords brings the history of chart music to your norns. Explore decades of Billboard Hot 100 hits, examine the chord progressions that made songs successful, and play them back on your grid. Perfect for music theory study, creative inspiration, or discovering the harmonic patterns behind your favorite songs.
-
-Features an offline database of chart hits with their chord progressions. No internet connection required.
-
-## Installation
-
-`;install https://github.com/jamminstein/billboard_chords`
+> Billboard Hot 100 chord explorer for grid
 
 ## Controls
 
-- **E1**: Scroll year
-- **E2**: Scroll week
-- **E3**: Scroll octave
-- **K3**: Cycle octave
+- **E1** — scroll year
+- **E2** — scroll week (within year)
+- **E3** — scroll octave
+- **K3** — cycle octave (3/4/5/6)
 
-### Grid (16x8)
-- **Columns 1-10**: Songs ranked by chart position
-- **Rows 1-8**: Chord buttons
-- **Hold button**: Play chord (sustain)
+## Grid
 
-MIDI output on channel 1.
-
-## Features
-
-- Browse Billboard Hot 100 by year and week
-- Hardcoded database of classic hits and their chord progressions
-- Real-time grid-based chord performance
-- Octave transposition
-- MIDI output for hardware synthesis
+16×8 monome grid displays a piano roll of chords from the Billboard Hot 100 database. Hold any grid button to play that chord; release for note off. Screen shows song name and chord progression.
 
 ## Requirements
 
 - norns
-- Grid 16x8
-- Built-in MollyThePoly engine
+- grid (16×8 monome)
+- MIDI device (optional)
+- engine: MollyThePoly
 
-## Author
+## Install
 
-@jamminstein
+```
+;install https://github.com/jamminstein/billboard_chords
+```
