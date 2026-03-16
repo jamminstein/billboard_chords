@@ -70,7 +70,7 @@ local DB = {
     { year=2004, title="YEAH!", artist="Usher", chords={"F#m","B","F#m"} },
     { year=2005, title="HIPS DON'T LIE", artist="Shakira", chords={"F","C","F"} },
     { year=2006, title="UMBRELLA", artist="Rihanna", chords={"Cm","Gm","Cm"} },
-    { year=2007, title="SINGLE LADIES", artist="Beyoncé", chords={"Dm","Dm","Dm"} },
+    { year=2007, title="SINGLE LADIES", artist="Beyonce", chords={"Dm","Dm","Dm"} },
     { year=2008, title="VIVA LA VIDA", artist="Coldplay", chords={"Eb","Bbm","Fm","Db"} },
     { year=2009, title="POKER FACE", artist="Lady Gaga", chords={"F#m","D","A"} },
   },
@@ -123,6 +123,9 @@ local state = {
   popup_val = nil,     -- popup value
   popup_time = 0,      -- popup display timer
 }
+
+-- Clock ID for cleanup
+local redraw_loop_id = nil
 
 -- ============================================================
 --  MUSIC THEORY
@@ -548,7 +551,7 @@ function init()
   rebuild_filtered_songs()
   
   -- Screen update loop for beat_phase
-  clock.run(function()
+  redraw_loop_id = clock.run(function()
     while true do
       state.beat_phase = (state.beat_phase + 1) % 4
       redraw()
@@ -563,5 +566,6 @@ end
 
 function cleanup()
   silence_all()
+  if redraw_loop_id then clock.cancel(redraw_loop_id) end
   clock.cancel_all()
 end
