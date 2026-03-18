@@ -109,22 +109,38 @@ local state = {
   year_idx = 1,
   song_idx = 1,
   octave = 4,
-  
+
   -- filtered songs for current decade
   filtered_songs = {},
-  
+
   -- similar songs search results
   search_results = {},
   showing_search = false,
-  
+
   -- NEW: Screen state vars
   beat_phase = 0,      -- 0-3 for beat tracking
   popup_param = nil,   -- popup category
   popup_val = nil,     -- popup value
   popup_time = 0,      -- popup display timer
+
+  -- NEW: Playback mode
+  auto_play = false,   -- playback mode on/off
+  bars_per_chord = 2,  -- bars per chord (1-8)
+  auto_play_clock_id = nil,
+  chord_idx = 1,       -- current chord index for playback
+
+  -- NEW: Transpose
+  transpose = 0,       -- transpose amount (-12 to 12)
+
+  -- NEW: Voicing mode
+  voicing_mode = "triad",  -- "root_only", "triad", or "seventh"
+
+  -- NEW: Song search via encoder
+  song_search_idx = 1,     -- alphabetical song list index
+  alphabetical_songs = {}, -- sorted song list
 }
 
--- Clock ID for cleanup
+-- Clock IDs for cleanup
 local redraw_loop_id = nil
 
 -- ============================================================
@@ -153,16 +169,42 @@ local function midi_to_hz(n)
   return 440.0 * (2.0 ^ ((n - 69) / 12.0))
 end
 
-local function chord_to_midi(str, oct)
+local function chord_to_midi(str, oct, voicing_mode, transpose)
   if not str or str == "" then return {} end
+  voicing_mode = voicing_mode or "triad"
+  transpose = transpose or 0
+
   local root, qual = str:match("^([A-G][b#?]?)(.*)$")
   if not root then return {} end
   local semi = NOTE_SEMI[root]
   if semi == nil then return {} end
-  local shape = CHORD_SHAPES[qual] or CHORD_SHAPES[""]
+
+  -- Apply transpose to root
+  semi = (semi + transpose) % 12
+
+  -- Determine intervals based on voicing_mode and chord quality
+  local intervals = {}
+
+  if voicing_mode == "root_only" then
+    intervals = {0}
+  elseif voicing_mode == "triad" then
+    -- Use basic triad from CHORD_SHAPES
+    intervals = CHORD_SHAPES[qual] or CHORD_SHAPES[""]
+  elseif voicing_mode == "seventh" then
+    -- Seventh voicing: add 10 (minor 7) or 11 (major 7) to triad
+    local base_shape = CHORD_SHAPES[qual] or CHORD_SHAPES[""]
+    intervals = {table.unpack(base_shape)}
+    -- Add seventh: minor 7 for 7, m7, or m chords; major 7 for maj7
+    if qual == "maj7" or qual == "" then
+      table.insert(intervals, 11)  -- major 7
+    else
+      table.insert(intervals, 10)  -- minor 7
+    end
+  end
+
   local base = (oct + 1) * 12 + semi
   local out = {}
-  for _, iv in ipairs(shape) do
+  for _, iv in ipairs(intervals) do
     local n = base + iv
     if n >= 0 and n <= 127 then table.insert(out, n) end
   end
@@ -180,7 +222,7 @@ end
 local function rebuild_filtered_songs()
   state.filtered_songs = {}
   local decade_filter = DECADES[state.current_decade]
-  
+
   for year_key, songs in pairs(DB) do
     for _, song in ipairs(songs) do
       if decade_filter(song.year) then
@@ -188,11 +230,21 @@ local function rebuild_filtered_songs()
       end
     end
   end
-  
+
   -- Sort by year
   table.sort(state.filtered_songs, function(a, b) return a.year < b.year end)
-  
+
   state.song_idx = math.min(state.song_idx, #state.filtered_songs)
+
+  -- Rebuild alphabetical song list
+  state.alphabetical_songs = {}
+  for year_key, songs in pairs(DB) do
+    for _, song in ipairs(songs) do
+      table.insert(state.alphabetical_songs, song)
+    end
+  end
+  table.sort(state.alphabetical_songs, function(a, b) return a.title < b.title end)
+  state.song_search_idx = math.min(state.song_search_idx, #state.alphabetical_songs)
 end
 
 local function set_decade(decade_str)
@@ -325,10 +377,10 @@ local function on_grid_key(x, y, z)
     if #state.filtered_songs > 0 and x <= #state.filtered_songs then
       state.song_idx = x
       silence_all()
-      
+
       local song = state.filtered_songs[state.song_idx]
       if song and y <= #song.chords then
-        local notes = chord_to_midi(song.chords[y], state.octave)
+        local notes = chord_to_midi(song.chords[y], state.octave, state.voicing_mode, state.transpose)
         for _, n in ipairs(notes) do
           sound_on(n)
         end
@@ -337,7 +389,7 @@ local function on_grid_key(x, y, z)
   else
     silence_all()
   end
-  
+
   grid_redraw()
 end
 
@@ -347,34 +399,34 @@ end
 function redraw()
   screen.clear()
   screen.aa(1)
-  
+
   if state.showing_search then
     -- ── STATUS STRIP ──────────────────────────────────
     screen.level(4)
     screen.rect(0, 0, 128, 11)
     screen.fill()
-    
+
     screen.level(15)
     screen.font_face(7)
     screen.font_size(8)
     screen.move(2, 8)
     screen.text("BILLBOARD")
-    
+
     -- beat pulse dot
     local beat_flash = (state.beat_phase % 4) < 2 and 12 or 4
     screen.level(beat_flash)
     screen.circle(120, 5, 2)
     screen.fill()
-    
+
     -- ── LIVE ZONE: Search Results ─────────────────────
     screen.level(15)
     screen.move(0, 24)
     screen.text("SIMILAR PROGRESSIONS")
-    
+
     screen.level(10)
     screen.move(0, 34)
     screen.text("Matches with: " .. state.filtered_songs[state.song_idx].title)
-    
+
     screen.level(6)
     local y = 45
     for i = 1, math.min(3, #state.search_results) do
@@ -382,47 +434,47 @@ function redraw()
       screen.text(state.search_results[i].song.title .. " (" .. state.search_results[i].matches .. ")")
       y = y + 7
     end
-    
+
     if #state.search_results == 0 then
       screen.level(4)
       screen.move(0, 45)
       screen.text("No similar progressions found")
     end
-    
+
   else
     -- ── STATUS STRIP ──────────────────────────────────
     screen.level(4)
     screen.rect(0, 0, 128, 11)
     screen.fill()
-    
+
     screen.level(15)
     screen.font_face(7)
     screen.font_size(8)
     screen.move(2, 8)
     screen.text("BILLBOARD")
-    
+
     -- decade at level 6
     screen.level(6)
     screen.move(80, 8)
     screen.text(state.current_decade)
-    
+
     -- beat pulse dot
     local beat_flash = (state.beat_phase % 4) < 2 and 12 or 4
     screen.level(beat_flash)
     screen.circle(120, 5, 2)
     screen.fill()
-    
+
     -- ── LIVE ZONE ─────────────────────────────────────
     if #state.filtered_songs > 0 then
       local song = state.filtered_songs[state.song_idx]
-      
+
       -- song browser: current at level 15, above/below 4-6
       screen.level(15)
       screen.font_face(7)
       screen.font_size(8)
       screen.move(0, 25)
       screen.text(song.title)
-      
+
       -- songs above/below at dim levels
       if state.song_idx > 1 then
         screen.level(6)
@@ -434,7 +486,7 @@ function redraw()
         screen.move(0, 34)
         screen.text(state.filtered_songs[state.song_idx + 1].title)
       end
-      
+
       -- chord progression at level 10-12
       screen.level(12)
       screen.font_face(1)
@@ -445,47 +497,86 @@ function redraw()
         chord_str = chord_str:sub(1, 40) .. ".."
       end
       screen.text(chord_str)
-      
-      -- similar count at level 4
+
+      -- song info at level 4
       screen.level(4)
       screen.move(0, 55)
-      screen.text(song.year .. " - " .. song.artist)
-      
+      local info_str = song.year .. " - " .. song.artist
+      if state.auto_play then
+        info_str = info_str .. " | AUTO:" .. (state.auto_play and "ON" or "OFF")
+      end
+      screen.text(info_str)
+
     else
       screen.level(4)
       screen.move(0, 25)
       screen.text("No songs in decade")
     end
-    
+
     -- ── CONTEXT BAR ───────────────────────────────────
     screen.level(5)
     screen.font_face(1)
     screen.font_size(5)
     screen.move(0, 62)
-    screen.text("E1:decade  E2:song  E3:octave  K2=similar")
+    screen.text("E1:decade  E2:song  E3:octave  K2=similar  K3=params")
   end
-  
+
   -- Popup system
   if state.popup_param and state.popup_time > 0 then
     screen.level(15)
     screen.rect(20, 35, 90, 25)
     screen.fill()
-    
+
     screen.level(0)
     screen.font_face(7)
     screen.font_size(8)
     screen.move(25, 45)
     screen.text(state.popup_param)
-    
+
     screen.font_face(1)
     screen.font_size(6)
     screen.move(25, 55)
     screen.text(tostring(state.popup_val))
-    
+
     state.popup_time = state.popup_time - 1
   end
-  
+
   screen.update()
+end
+
+-- ============================================================
+--  PLAYBACK CLOCK
+-- ============================================================
+local function start_auto_play()
+  if state.auto_play_clock_id then
+    clock.cancel(state.auto_play_clock_id)
+  end
+
+  state.chord_idx = 1
+  silence_all()
+
+  state.auto_play_clock_id = clock.run(function()
+    while state.auto_play do
+      -- Sync to bar boundary
+      clock.sync(state.bars_per_chord)
+
+      -- Play current chord
+      if #state.filtered_songs > 0 then
+        local song = state.filtered_songs[state.song_idx]
+        if song and #song.chords > 0 then
+          silence_all()
+          local notes = chord_to_midi(song.chords[state.chord_idx], state.octave, state.voicing_mode, state.transpose)
+          for _, n in ipairs(notes) do
+            sound_on(n)
+          end
+          state.chord_idx = (state.chord_idx % #song.chords) + 1
+        end
+      end
+
+      clock.sleep(1)
+    end
+    silence_all()
+  end)
 end
 
 -- ============================================================
@@ -500,7 +591,7 @@ function enc(n, d)
     state.popup_param = "DECADE"
     state.popup_val = state.current_decade
     state.popup_time = 20
-    
+
   elseif n == 2 then
     if #state.filtered_songs > 0 then
       state.song_idx = ((state.song_idx - 1 + d) % #state.filtered_songs) + 1
@@ -508,22 +599,23 @@ function enc(n, d)
       state.popup_param = "SONG"
       state.popup_val = state.song_idx
       state.popup_time = 20
+      state.chord_idx = 1
     end
-    
+
   elseif n == 3 then
     state.octave = math.max(3, math.min(6, state.octave + d))
     state.popup_param = "OCT"
     state.popup_val = state.octave
     state.popup_time = 20
   end
-  
+
   grid_redraw()
   redraw()
 end
 
 function key(n, z)
   if z == 0 then return end
-  
+
   if n == 2 then
     -- K2: show similar progressions
     if #state.filtered_songs > 0 then
@@ -531,9 +623,19 @@ function key(n, z)
     end
     grid_redraw()
     redraw()
-    
+
   elseif n == 3 then
-    state.showing_search = false
+    -- K3: toggle auto_play
+    state.auto_play = not state.auto_play
+    if state.auto_play then
+      start_auto_play()
+    else
+      silence_all()
+      if state.auto_play_clock_id then
+        clock.cancel(state.auto_play_clock_id)
+        state.auto_play_clock_id = nil
+      end
+    end
     redraw()
   end
 end
@@ -544,12 +646,37 @@ end
 
 function init()
   midi_out = midi.connect(1)
-  
+
   g = grid.connect()
   g.key = on_grid_key
-  
+
   rebuild_filtered_songs()
-  
+
+  -- Add parameters for enhancements
+  params:add_option("voicing_mode", "voicing", {"root_only", "triad", "seventh"}, 2)
+  params:set_action("voicing_mode", function(val)
+    state.voicing_mode = {"root_only", "triad", "seventh"}[val]
+    state.popup_param = "VOICING"
+    state.popup_val = state.voicing_mode
+    state.popup_time = 20
+  end)
+
+  params:add_number("transpose", "transpose", -12, 12, 0)
+  params:set_action("transpose", function(val)
+    state.transpose = val
+    state.popup_param = "TRANSPOSE"
+    state.popup_val = state.transpose
+    state.popup_time = 20
+  end)
+
+  params:add_number("bars_per_chord", "bars/chord", 1, 8, 2)
+  params:set_action("bars_per_chord", function(val)
+    state.bars_per_chord = val
+    state.popup_param = "BARS"
+    state.popup_val = state.bars_per_chord
+    state.popup_time = 20
+  end)
+
   -- Screen update loop for beat_phase
   redraw_loop_id = clock.run(function()
     while true do
@@ -559,7 +686,7 @@ function init()
       clock.sleep(1/10)  -- ~10fps
     end
   end)
-  
+
   redraw()
   grid_redraw()
 end
@@ -567,5 +694,6 @@ end
 function cleanup()
   silence_all()
   if redraw_loop_id then clock.cancel(redraw_loop_id) end
+  if state.auto_play_clock_id then clock.cancel(state.auto_play_clock_id) end
   clock.cancel_all()
 end
