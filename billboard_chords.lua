@@ -737,8 +737,8 @@ end
 
 function cleanup()
   silence_all()
+  if midi_out then for ch=1,16 do midi_out:cc(123,0,ch) end end
   if opxy_out then for ch=1,16 do opxy_out:cc(123,0,ch) end end
   if redraw_loop_id then clock.cancel(redraw_loop_id) end
   if state.auto_play_clock_id then clock.cancel(state.auto_play_clock_id) end
-  clock.cancel_all()
 end
