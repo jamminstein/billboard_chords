@@ -306,6 +306,7 @@ end
 local sounding = {}
 
 local function sound_on(n)
+  if not n or n <= 0 then return end
   if sounding[n] then return end
   engine.note_on(midi_to_hz(n), 0.75)
   if midi_out then
@@ -315,6 +316,7 @@ local function sound_on(n)
 end
 
 local function sound_off(n)
+  if not n or n <= 0 then return end
   if not sounding[n] then return end
   engine.note_off(midi_to_hz(n))
   if midi_out then
@@ -381,8 +383,10 @@ local function on_grid_key(x, y, z)
       local song = state.filtered_songs[state.song_idx]
       if song and y <= #song.chords then
         local notes = chord_to_midi(song.chords[y], state.octave, state.voicing_mode, state.transpose)
-        for _, n in ipairs(notes) do
-          sound_on(n)
+        if notes and #notes > 0 then
+          for _, n in ipairs(notes) do
+            sound_on(n)
+          end
         end
       end
     end
@@ -425,7 +429,9 @@ function redraw()
 
     screen.level(10)
     screen.move(0, 34)
-    screen.text("Matches with: " .. state.filtered_songs[state.song_idx].title)
+    if #state.filtered_songs > 0 then
+      screen.text("Matches with: " .. state.filtered_songs[state.song_idx].title)
+    end
 
     screen.level(6)
     local y = 45
@@ -566,8 +572,10 @@ local function start_auto_play()
         if song and #song.chords > 0 then
           silence_all()
           local notes = chord_to_midi(song.chords[state.chord_idx], state.octave, state.voicing_mode, state.transpose)
-          for _, n in ipairs(notes) do
-            sound_on(n)
+          if notes and #notes > 0 then
+            for _, n in ipairs(notes) do
+              sound_on(n)
+            end
           end
           state.chord_idx = (state.chord_idx % #song.chords) + 1
         end
