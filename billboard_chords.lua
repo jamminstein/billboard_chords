@@ -28,15 +28,6 @@ engine.name = "MollyThePoly"
 
 local g        -- grid
 local midi_out -- midi device
-local opxy_out = nil
-
--- OP-XY MIDI helpers
-local function opxy_note_on(note, vel)
-  if opxy_out then opxy_out:note_on(note, vel, params:get("opxy_channel")) end
-end
-local function opxy_note_off(note)
-  if opxy_out then opxy_out:note_off(note, 0, params:get("opxy_channel")) end
-end
 
 -- OP-XY MIDI
 local opxy_out = nil
@@ -690,12 +681,6 @@ function init()
     state.popup_val = state.bars_per_chord
     state.popup_time = 20
   end)
-
-  -- OP-XY MIDI output
-  params:add_separator("OP-XY MIDI")
-  params:add{type="number", id="opxy_device", name="OP-XY Device", min=1, max=16, default=2, action=function(v) opxy_out = midi.connect(v) end}
-  params:add{type="number", id="opxy_channel", name="OP-XY Channel", min=1, max=16, default=1}
-  opxy_out = midi.connect(params:get("opxy_device"))
 
   redraw_loop_id = clock.run(function()
     while true do
