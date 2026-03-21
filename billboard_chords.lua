@@ -414,134 +414,159 @@ function redraw()
   screen.clear()
   screen.aa(1)
 
+  -- ── Header bar ──
+  screen.level(3)
+  screen.rect(0, 0, 128, 11)
+  screen.fill()
+  screen.level(15)
+  screen.font_face(7)
+  screen.font_size(8)
+  screen.move(2, 8)
+  screen.text("BILLBOARD")
+
+  -- Decade badge
+  screen.level(10)
+  screen.move(60, 8)
+  screen.text(state.current_decade)
+
+  -- Beat pulse
+  local beat_flash = (state.beat_phase % 4) < 2 and 12 or 4
+  screen.level(beat_flash)
+  screen.circle(120, 5, 2)
+  screen.fill()
+
+  -- Auto-play indicator
+  if state.auto_play then
+    screen.level(15)
+    screen.move(108, 8)
+    screen.text(">")
+  end
+
   if state.showing_search then
-    screen.level(4)
-    screen.rect(0, 0, 128, 11)
-    screen.fill()
-
-    screen.level(15)
-    screen.font_face(7)
+    -- ── Search results view ──
+    screen.level(8)
+    screen.font_face(1)
     screen.font_size(8)
-    screen.move(2, 8)
-    screen.text("BILLBOARD")
+    screen.move(2, 20)
+    screen.text("SIMILAR TO:")
 
-    local beat_flash = (state.beat_phase % 4) < 2 and 12 or 4
-    screen.level(beat_flash)
-    screen.circle(120, 5, 2)
-    screen.fill()
-
-    screen.level(15)
-    screen.move(0, 24)
-    screen.text("SIMILAR PROGRESSIONS")
-
-    screen.level(10)
-    screen.move(0, 34)
     if #state.filtered_songs > 0 then
-      screen.text("Matches with: " .. state.filtered_songs[state.song_idx].title)
+      screen.level(12)
+      screen.move(2, 28)
+      local src = state.filtered_songs[state.song_idx]
+      screen.text(src.title)
     end
 
-    screen.level(6)
-    local y = 45
-    for i = 1, math.min(3, #state.search_results) do
-      screen.move(0, y)
-      screen.text(state.search_results[i].song.title .. " (" .. state.search_results[i].matches .. ")")
-      y = y + 7
-    end
-
-    if #state.search_results == 0 then
-      screen.level(4)
-      screen.move(0, 45)
-      screen.text("No similar progressions found")
+    -- Results as compact list with match count bars
+    if #state.search_results > 0 then
+      for i = 1, math.min(4, #state.search_results) do
+        local item = state.search_results[i]
+        local y = 34 + (i - 1) * 8
+        screen.level(8)
+        screen.font_size(8)
+        screen.move(2, y)
+        screen.text(item.song.title)
+        -- Match count as small dots
+        for m = 1, item.matches do
+          screen.level(12)
+          screen.circle(120 + (m - 1) * 4, y - 2, 1)
+          screen.fill()
+        end
+      end
+    else
+      screen.level(3)
+      screen.move(64, 44)
+      screen.text_center("no matches")
     end
 
   else
-    screen.level(4)
-    screen.rect(0, 0, 128, 11)
-    screen.fill()
-
-    screen.level(15)
-    screen.font_face(7)
-    screen.font_size(8)
-    screen.move(2, 8)
-    screen.text("BILLBOARD")
-
-    screen.level(6)
-    screen.move(80, 8)
-    screen.text(state.current_decade)
-
-    local beat_flash = (state.beat_phase % 4) < 2 and 12 or 4
-    screen.level(beat_flash)
-    screen.circle(120, 5, 2)
-    screen.fill()
-
+    -- ── Main song browser ──
     if #state.filtered_songs > 0 then
       local song = state.filtered_songs[state.song_idx]
 
-      screen.level(15)
-      screen.font_face(7)
-      screen.font_size(8)
-      screen.move(0, 25)
-      screen.text(song.title)
-
+      -- Previous song (dim)
       if state.song_idx > 1 then
-        screen.level(6)
-        screen.move(0, 16)
+        screen.level(3)
+        screen.font_face(1)
+        screen.font_size(8)
+        screen.move(2, 19)
         screen.text(state.filtered_songs[state.song_idx - 1].title)
       end
+
+      -- Current song (bright, larger)
+      screen.level(15)
+      screen.font_face(7)
+      screen.font_size(10)
+      screen.move(2, 29)
+      local title = song.title
+      if #title > 22 then title = title:sub(1, 22) .. ".." end
+      screen.text(title)
+
+      -- Next song (dim)
       if state.song_idx < #state.filtered_songs then
-        screen.level(6)
-        screen.move(0, 34)
+        screen.level(3)
+        screen.font_face(1)
+        screen.font_size(8)
+        screen.move(2, 37)
         screen.text(state.filtered_songs[state.song_idx + 1].title)
       end
 
-      screen.level(12)
+      -- ── Chord progression as blocks ──
+      local chords = song.chords
+      local chord_count = #chords
+      local block_w = math.min(28, math.floor(124 / math.max(1, chord_count)))
       screen.font_face(1)
-      screen.font_size(5)
-      screen.move(0, 45)
-      local chord_str = table.concat(song.chords, " ")
-      if #chord_str > 40 then
-        chord_str = chord_str:sub(1, 40) .. ".."
+      screen.font_size(8)
+      for i = 1, chord_count do
+        local cx = 2 + (i - 1) * block_w
+        -- Highlight current chord during auto play
+        local is_current = state.auto_play and (i == state.chord_idx)
+        if is_current then
+          screen.level(15)
+          screen.rect(cx, 42, block_w - 2, 11)
+          screen.fill()
+          screen.level(0)
+        else
+          screen.level(10)
+          screen.rect(cx, 42, block_w - 2, 11)
+          screen.stroke()
+          screen.level(10)
+        end
+        screen.move(cx + 2, 50)
+        screen.text(chords[i])
       end
-      screen.text(chord_str)
 
-      screen.level(4)
-      screen.move(0, 55)
-      local info_str = song.year .. " - " .. song.artist
-      if state.auto_play then
-        info_str = info_str .. " | AUTO:" .. (state.auto_play and "ON" or "OFF")
-      end
-      screen.text(info_str)
-
+      -- ── Artist + year (bottom) ──
+      screen.level(3)
+      screen.font_face(1)
+      screen.font_size(8)
+      screen.move(2, 62)
+      screen.text(song.year .. " " .. song.artist)
     else
       screen.level(4)
-      screen.move(0, 25)
-      screen.text("No songs in decade")
+      screen.font_face(1)
+      screen.font_size(8)
+      screen.move(64, 32)
+      screen.text_center("no songs")
     end
-
-    screen.level(5)
-    screen.font_face(1)
-    screen.font_size(5)
-    screen.move(0, 62)
-    screen.text("E1:decade  E2:song  E3:octave  K2=similar  K3=params")
   end
 
-  -- Popup system
+  -- ── Popup overlay ──
   if state.popup_param and state.popup_time > 0 then
-    screen.level(15)
-    screen.rect(20, 35, 90, 25)
-    screen.fill()
-
+    -- Dark background
     screen.level(0)
+    screen.rect(24, 20, 80, 22)
+    screen.fill()
+    -- Border
+    screen.level(12)
+    screen.rect(24, 20, 80, 22)
+    screen.stroke()
+    -- Content
+    screen.level(15)
     screen.font_face(7)
-    screen.font_size(8)
-    screen.move(25, 45)
-    screen.text(state.popup_param)
-
-    screen.font_face(1)
-    screen.font_size(6)
-    screen.move(25, 55)
-    screen.text(tostring(state.popup_val))
-
+    screen.font_size(10)
+    screen.move(64, 34)
+    screen.text_center(state.popup_param .. " " .. tostring(state.popup_val))
     state.popup_time = state.popup_time - 1
   end
 
