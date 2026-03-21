@@ -466,10 +466,10 @@ function redraw()
         screen.font_size(8)
         screen.move(2, y)
         screen.text(item.song.title)
-        -- Match count as small dots
-        for m = 1, item.matches do
+        -- Match count as small dots (clamp to screen width)
+        for m = 1, math.min(item.matches, 3) do
           screen.level(12)
-          screen.circle(120 + (m - 1) * 4, y - 2, 1)
+          screen.circle(110 + (m - 1) * 5, y - 2, 1)
           screen.fill()
         end
       end
@@ -567,7 +567,6 @@ function redraw()
     screen.font_size(10)
     screen.move(64, 34)
     screen.text_center(state.popup_param .. " " .. tostring(state.popup_val))
-    state.popup_time = state.popup_time - 1
   end
 
   screen.update()
@@ -723,6 +722,9 @@ function init()
   redraw_loop_id = clock.run(function()
     while true do
       state.beat_phase = (state.beat_phase + 1) % 4
+      if state.popup_time > 0 then
+        state.popup_time = state.popup_time - 1
+      end
       redraw()
       grid_redraw()
       clock.sleep(1/10)
