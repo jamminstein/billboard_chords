@@ -308,7 +308,7 @@ local sounding = {}
 local function sound_on(n)
   if not n or n <= 0 then return end
   if sounding[n] then return end
-  engine.note_on(midi_to_hz(n), 0.75)
+  engine.noteOn(n, midi_to_hz(n), 0.75)
   if midi_out then
     midi_out:note_on(n, 90, 1)
   end
@@ -318,7 +318,7 @@ end
 local function sound_off(n)
   if not n or n <= 0 then return end
   if not sounding[n] then return end
-  engine.note_off(midi_to_hz(n))
+  engine.noteOff(n)
   if midi_out then
     midi_out:note_off(n, 0, 1)
   end
@@ -327,7 +327,7 @@ end
 
 local function silence_all()
   for n, _ in pairs(sounding) do
-    engine.note_off(midi_to_hz(n))
+    engine.noteOff(n)
     if midi_out then midi_out:note_off(n, 0, 1) end
   end
   sounding = {}
@@ -663,7 +663,8 @@ function init()
   -- Add parameters for enhancements
   params:add_option("voicing_mode", "voicing", {"root_only", "triad", "seventh"}, 2)
   params:set_action("voicing_mode", function(val)
-    state.voicing_mode = {"root_only", "triad", "seventh"}[val]
+    local voicing_names = {"root_only", "triad", "seventh"}
+    state.voicing_mode = voicing_names[val]
     state.popup_param = "VOICING"
     state.popup_val = state.voicing_mode
     state.popup_time = 20
