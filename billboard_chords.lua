@@ -2,7 +2,7 @@
 -- Billboard Hot 100 Chord Explorer for Monome Norns + Grid
 --
 -- OFFLINE VERSION — all data is hardcoded.
--- 
+--
 -- ENCODERS:
 --   E1 = scroll year
 --   E2 = scroll week (within year)
@@ -21,13 +21,22 @@
 --
 -- NEW FEATURES:
 -- - Decade filtering: K1 toggles mode, filters songs by year
--- - Similar progressions: K2+E3 finds songs with ≥2 common chords
+-- - Similar progressions: K2+E3 finds songs with >=2 common chords
 -- - Screen redesign: beat_phase, popup system, brightness hierarchy
 
 engine.name = "MollyThePoly"
 
 local g        -- grid
 local midi_out -- midi device
+local opxy_out = nil
+
+-- OP-XY MIDI helpers
+local function opxy_note_on(note, vel)
+  if opxy_out then opxy_out:note_on(note, vel, params:get("opxy_channel")) end
+end
+local function opxy_note_off(note)
+  if opxy_out then opxy_out:note_off(note, 0, params:get("opxy_channel")) end
+end
 
 -- Minimal dataset for demo (in production, expand from actual database)
 local DB = {
@@ -260,7 +269,7 @@ end
 local function find_similar(current_song)
   -- Find songs with >= 2 chords in common (same pitch class, ignoring quality)
   state.search_results = {}
-  
+
   -- Extract pitch classes from current song
   local current_pcs = {}
   for _, chord in ipairs(current_song.chords) do
@@ -272,13 +281,13 @@ local function find_similar(current_song)
       end
     end
   end
-  
+
   -- Scan database for matches
   for year_key, songs in pairs(DB) do
     for _, song in ipairs(songs) do
       if song ~= current_song then
         local matches = 0
-        
+
         for _, chord in ipairs(song.chords) do
           local root, _ = chord:match("^([A-G][b#?]?)(.*)$")
           if root then
@@ -288,14 +297,14 @@ local function find_similar(current_song)
             end
           end
         end
-        
+
         if matches >= 2 then
           table.insert(state.search_results, {song=song, matches=matches})
         end
       end
     end
   end
-  
+
   table.sort(state.search_results, function(a, b) return a.matches > b.matches end)
   state.showing_search = true
 end
@@ -312,6 +321,7 @@ local function sound_on(n)
   if midi_out then
     midi_out:note_on(n, 90, 1)
   end
+  opxy_note_on(n, 90)
   sounding[n] = true
 end
 
@@ -322,6 +332,7 @@ local function sound_off(n)
   if midi_out then
     midi_out:note_off(n, 0, 1)
   end
+  opxy_note_off(n)
   sounding[n] = nil
 end
 
@@ -329,6 +340,7 @@ local function silence_all()
   for n, _ in pairs(sounding) do
     engine.noteOff(n)
     if midi_out then midi_out:note_off(n, 0, 1) end
+    opxy_note_off(n)
   end
   sounding = {}
 end
@@ -339,12 +351,12 @@ end
 local function grid_redraw()
   if not g then return end
   g:all(0)
-  
+
   local current_song_list = state.showing_search and state.search_results or {state.filtered_songs}
   if not state.showing_search then
     current_song_list = {state.filtered_songs}
   end
-  
+
   if state.showing_search and #state.search_results > 0 then
     -- Show similar songs
     for i = 1, math.min(10, #state.search_results) do
@@ -362,7 +374,7 @@ local function grid_redraw()
         if col <= #state.filtered_songs then
           local s = state.filtered_songs[col]
           local sel = (col == state.song_idx) and 15 or 8
-          
+
           for row = 1, math.min(8, #s.chords) do
             g:led(col, row, sel)
           end
@@ -370,7 +382,7 @@ local function grid_redraw()
       end
     end
   end
-  
+
   g:refresh()
 end
 
@@ -405,7 +417,6 @@ function redraw()
   screen.aa(1)
 
   if state.showing_search then
-    -- ── STATUS STRIP ──────────────────────────────────
     screen.level(4)
     screen.rect(0, 0, 128, 11)
     screen.fill()
@@ -416,13 +427,11 @@ function redraw()
     screen.move(2, 8)
     screen.text("BILLBOARD")
 
-    -- beat pulse dot
     local beat_flash = (state.beat_phase % 4) < 2 and 12 or 4
     screen.level(beat_flash)
     screen.circle(120, 5, 2)
     screen.fill()
 
-    -- ── LIVE ZONE: Search Results ─────────────────────
     screen.level(15)
     screen.move(0, 24)
     screen.text("SIMILAR PROGRESSIONS")
@@ -448,7 +457,6 @@ function redraw()
     end
 
   else
-    -- ── STATUS STRIP ──────────────────────────────────
     screen.level(4)
     screen.rect(0, 0, 128, 11)
     screen.fill()
@@ -459,29 +467,24 @@ function redraw()
     screen.move(2, 8)
     screen.text("BILLBOARD")
 
-    -- decade at level 6
     screen.level(6)
     screen.move(80, 8)
     screen.text(state.current_decade)
 
-    -- beat pulse dot
     local beat_flash = (state.beat_phase % 4) < 2 and 12 or 4
     screen.level(beat_flash)
     screen.circle(120, 5, 2)
     screen.fill()
 
-    -- ── LIVE ZONE ─────────────────────────────────────
     if #state.filtered_songs > 0 then
       local song = state.filtered_songs[state.song_idx]
 
-      -- song browser: current at level 15, above/below 4-6
       screen.level(15)
       screen.font_face(7)
       screen.font_size(8)
       screen.move(0, 25)
       screen.text(song.title)
 
-      -- songs above/below at dim levels
       if state.song_idx > 1 then
         screen.level(6)
         screen.move(0, 16)
@@ -493,7 +496,6 @@ function redraw()
         screen.text(state.filtered_songs[state.song_idx + 1].title)
       end
 
-      -- chord progression at level 10-12
       screen.level(12)
       screen.font_face(1)
       screen.font_size(5)
@@ -504,7 +506,6 @@ function redraw()
       end
       screen.text(chord_str)
 
-      -- song info at level 4
       screen.level(4)
       screen.move(0, 55)
       local info_str = song.year .. " - " .. song.artist
@@ -519,7 +520,6 @@ function redraw()
       screen.text("No songs in decade")
     end
 
-    -- ── CONTEXT BAR ───────────────────────────────────
     screen.level(5)
     screen.font_face(1)
     screen.font_size(5)
@@ -563,10 +563,8 @@ local function start_auto_play()
 
   state.auto_play_clock_id = clock.run(function()
     while state.auto_play do
-      -- Sync to bar boundary
       clock.sync(state.bars_per_chord)
 
-      -- Play current chord
       if #state.filtered_songs > 0 then
         local song = state.filtered_songs[state.song_idx]
         if song and #song.chords > 0 then
@@ -625,7 +623,6 @@ function key(n, z)
   if z == 0 then return end
 
   if n == 2 then
-    -- K2: show similar progressions
     if #state.filtered_songs > 0 then
       find_similar(state.filtered_songs[state.song_idx])
     end
@@ -633,7 +630,6 @@ function key(n, z)
     redraw()
 
   elseif n == 3 then
-    -- K3: toggle auto_play
     state.auto_play = not state.auto_play
     if state.auto_play then
       start_auto_play()
@@ -660,7 +656,6 @@ function init()
 
   rebuild_filtered_songs()
 
-  -- Add parameters for enhancements
   params:add_option("voicing_mode", "voicing", {"root_only", "triad", "seventh"}, 2)
   params:set_action("voicing_mode", function(val)
     local voicing_names = {"root_only", "triad", "seventh"}
@@ -686,13 +681,18 @@ function init()
     state.popup_time = 20
   end)
 
-  -- Screen update loop for beat_phase
+  -- OP-XY MIDI output
+  params:add_separator("OP-XY MIDI")
+  params:add{type="number", id="opxy_device", name="OP-XY Device", min=1, max=16, default=2, action=function(v) opxy_out = midi.connect(v) end}
+  params:add{type="number", id="opxy_channel", name="OP-XY Channel", min=1, max=16, default=1}
+  opxy_out = midi.connect(params:get("opxy_device"))
+
   redraw_loop_id = clock.run(function()
     while true do
       state.beat_phase = (state.beat_phase + 1) % 4
       redraw()
       grid_redraw()
-      clock.sleep(1/10)  -- ~10fps
+      clock.sleep(1/10)
     end
   end)
 
@@ -702,6 +702,7 @@ end
 
 function cleanup()
   silence_all()
+  if opxy_out then for ch=1,16 do opxy_out:cc(123,0,ch) end end
   if redraw_loop_id then clock.cancel(redraw_loop_id) end
   if state.auto_play_clock_id then clock.cancel(state.auto_play_clock_id) end
   clock.cancel_all()
