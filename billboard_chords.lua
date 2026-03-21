@@ -25,6 +25,7 @@
 -- - Screen redesign: beat_phase, popup system, brightness hierarchy
 
 engine.name = "MollyThePoly"
+local MollyThePoly = require "molly_the_poly/lib/molly_the_poly_engine"
 
 local g        -- grid
 local midi_out -- midi device
@@ -657,6 +658,17 @@ function init()
   g.key = on_grid_key
 
   rebuild_filtered_songs()
+
+  -- MollyThePoly sound params
+  MollyThePoly.add_params()
+  -- Warm chord preset
+  params:set("osc_wave_shape", 0.3)
+  params:set("lp_filter_cutoff", 2000)
+  params:set("lp_filter_resonance", 0.15)
+  params:set("env_2_attack", 0.01)
+  params:set("env_2_decay", 0.8)
+  params:set("env_2_sustain", 0.6)
+  params:set("env_2_release", 1.0)
 
   params:add_option("voicing_mode", "voicing", {"root_only", "triad", "seventh"}, 2)
   params:set_action("voicing_mode", function(val)
