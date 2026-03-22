@@ -412,14 +412,15 @@ end
 -- ============================================================
 function redraw()
   screen.clear()
-  screen.aa(1)
+  screen.aa(0)
+  screen.font_face(1)
 
   -- ── Header bar ──
   screen.level(3)
   screen.rect(0, 0, 128, 11)
   screen.fill()
   screen.level(15)
-  screen.font_face(7)
+  screen.font_face(1)
   screen.font_size(8)
   screen.move(2, 8)
   screen.text("BILLBOARD")
@@ -495,7 +496,7 @@ function redraw()
 
       -- Current song (bright, larger)
       screen.level(15)
-      screen.font_face(7)
+      screen.font_face(1)
       screen.font_size(10)
       screen.move(2, 29)
       local title = song.title
@@ -563,7 +564,7 @@ function redraw()
     screen.stroke()
     -- Content
     screen.level(15)
-    screen.font_face(7)
+    screen.font_face(1)
     screen.font_size(10)
     screen.move(64, 34)
     screen.text_center(state.popup_param .. " " .. tostring(state.popup_val))
